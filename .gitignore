@@ -1,0 +1,33 @@
+# Build artifacts
+/build/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/*.ninja
+/.ninja_deps
+/.ninja_log
+/*_artefacts/
+/JUCE/extras/Projucer/Builds/
+**/*.ilk
+**/*.pdb
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# CLion / JetBrains
+.idea/
+
+# Logs
+*.log
+
+# Optional: local plugin install dir (если вдруг держишь копию в репо)
+# .vst3/
