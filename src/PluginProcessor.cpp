@@ -104,6 +104,14 @@ SatuMorpherAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f),
         0.5f
     ));
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"mix", 1},
+        "Mix",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        100.0f,
+        "%"
+    ));
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"leftType", 1},
@@ -221,8 +229,11 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 {
     const int totalCh = buffer.getNumChannels();
     const int procCh  = juce::jmin(2, totalCh);
-    if (procCh <= 0)
-        return;
+    if (procCh <= 0) return;
+
+    dryBuffer.setSize(procCh, buffer.getNumSamples(), false, false, true);
+    for (int ch = 0; ch < procCh; ++ch)
+        dryBuffer.copyFrom(ch, 0, buffer, ch, 0, buffer.getNumSamples());
 
     juce::ScopedNoDenormals noDenormals;
 
@@ -242,6 +253,9 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     const auto rightType = (SatType) rightIdx;
 
     const int osMode = juce::jlimit(0, 2, (int) apvts.getRawParameterValue("oversampleMode")->load());
+
+    float mix = apvts.getRawParameterValue("mix")->load() / 100.0f;
+    mix = juce::jlimit(0.0f, 1.0f, mix);
 
     auto fullBlock = juce::dsp::AudioBlock<float>(buffer);
     auto block     = fullBlock.getSubsetChannelBlock(0, (size_t) procCh);
@@ -266,11 +280,14 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     // DC-block + Output gain (в обычной частоте)
     for (int ch = 0; ch < procCh; ++ch)
     {
-        auto* data = buffer.getWritePointer(ch);
+        auto* wet = buffer.getWritePointer(ch);
+        const auto* dry = dryBuffer.getReadPointer(ch);
+
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            float y = dcBlock[(size_t) ch].processSample(data[i]);
-            data[i] = y * outGain;
+            float w = dcBlock[(size_t) ch].processSample(wet[i]);
+            float y = dry[i] + mix * (w - dry[i]);
+            wet[i] = y * outGain; 
         }
     }
 }

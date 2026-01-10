@@ -48,4 +48,5 @@ private:
     std::array<juce::dsp::IIR::Filter<float>, 2> dcBlock;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
+    juce::AudioBuffer<float> dryBuffer;
 };

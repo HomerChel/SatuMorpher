@@ -40,6 +40,10 @@ private:
     std::atomic<float>* leftTypeParam  = nullptr;
     std::atomic<float>* rightTypeParam = nullptr;
 
+    juce::Slider mixSlider;
+    juce::Label  mixLabel;
+    std::unique_ptr<Attachment> mixAttachment;
+
     juce::Slider outputSlider;
     juce::Label  outputLabel;
     std::unique_ptr<Attachment> outputAttachment;

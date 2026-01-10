@@ -19,6 +19,17 @@ SatuMorpherAudioProcessorEditor::SatuMorpherAudioProcessorEditor (SatuMorpherAud
 
     driveAttachment = std::make_unique<Attachment>(audioProcessor.apvts, "drive", driveSlider);
 
+    mixSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    mixSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 24);
+    mixSlider.setTextValueSuffix(" %");
+    addAndMakeVisible(mixSlider);
+
+    mixLabel.setText("Mix", juce::dontSendNotification);
+    mixLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(mixLabel);
+
+    mixAttachment = std::make_unique<Attachment>(audioProcessor.apvts, "mix", mixSlider);
+
     outputSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     outputSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 24);
     addAndMakeVisible(outputSlider);
@@ -173,20 +184,27 @@ void SatuMorpherAudioProcessorEditor::resized()
     // Top row: Morph (full width)
     morphLabel.setBounds(topRow.removeFromTop(22));
     morphSlider.setBounds(topRow.reduced(10, 6));
+    
+    // Bottom row: Drive | Mix | Output
+    const int gap = 12;
+    auto bot = botRow.reduced(0, 0);
 
-    // Bottom row: split into two
-    auto botLeft  = botRow.removeFromLeft(botRow.getWidth() / 2);
-    auto botRight = botRow;
+    const int thirdW = (bot.getWidth() - 2 * gap) / 3;
 
-    driveLabel.setBounds(botLeft.removeFromTop(22));
-    driveSlider.setBounds(botLeft.reduced(10, 6));
+    auto driveArea = bot.removeFromLeft(thirdW);
+    bot.removeFromLeft(gap);
+    auto mixArea = bot.removeFromLeft(thirdW);
+    bot.removeFromLeft(gap);
+    auto outArea = bot;
 
-    outputLabel.setBounds(botRight.removeFromTop(22));
-    outputSlider.setBounds(botRight.reduced(10, 6));
+    driveLabel.setBounds(driveArea.removeFromTop(22));
+    driveSlider.setBounds(driveArea.reduced(10, 6));
 
-    const int pad = 16;
-    oversampleLabel.setBounds(pad, getHeight() - 28, 24, 20);
-    oversampleBox.setBounds(pad + 26, getHeight() - 30, 70, 24);
+    mixLabel.setBounds(mixArea.removeFromTop(22));
+    mixSlider.setBounds(mixArea.reduced(10, 6));
+
+    outputLabel.setBounds(outArea.removeFromTop(22));
+    outputSlider.setBounds(outArea.reduced(10, 6));
 }
 
 void SatuMorpherAudioProcessorEditor::timerCallback()
