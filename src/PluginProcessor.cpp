@@ -227,24 +227,49 @@ static void processSaturationBlock(
 
 void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const int totalCh = buffer.getNumChannels();
-    const int procCh  = juce::jmin(2, totalCh);
-    if (procCh <= 0) return;
-
-    dryBuffer.setSize(procCh, buffer.getNumSamples(), false, false, true);
-    for (int ch = 0; ch < procCh; ++ch)
-        dryBuffer.copyFrom(ch, 0, buffer, ch, 0, buffer.getNumSamples());
-
     juce::ScopedNoDenormals noDenormals;
 
+    const int totalCh = buffer.getNumChannels();
+    const int procCh  = juce::jmin(2, totalCh);
+    if (procCh <= 0)
+        return;
+
+    // --- Params needed early
+    const float outDb   = apvts.getRawParameterValue("output")->load();
+    const float outGain = juce::Decibels::decibelsToGain(outDb);
+
+    float mix = apvts.getRawParameterValue("mix")->load() / 100.0f;
+    mix = juce::jlimit(0.0f, 1.0f, mix);
+
+    const bool isDry = (mix <= 0.0001f);
+    const bool isWet = (mix >= 0.9999f);
+
+    // Mix=0%: полностью dry -> только output gain и выходим
+    if (isDry)
+    {
+        for (int ch = 0; ch < procCh; ++ch)
+        {
+            auto* data = buffer.getWritePointer(ch);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                data[i] *= outGain;
+        }
+        return;
+    }
+
+    // Если mix не 100% wet — сохраняем dry
+    if (!isWet)
+    {
+        dryBuffer.setSize(procCh, buffer.getNumSamples(), false, false, true);
+        for (int ch = 0; ch < procCh; ++ch)
+            dryBuffer.copyFrom(ch, 0, buffer, ch, 0, buffer.getNumSamples());
+    }
+
+    // --- Rest params
     const float driveDb = apvts.getRawParameterValue("drive")->load();
     const float drive   = juce::Decibels::decibelsToGain(driveDb);
 
     float morph = apvts.getRawParameterValue("morph")->load();
     morph = juce::jlimit(0.0f, 1.0f, morph);
-
-    const float outDb   = apvts.getRawParameterValue("output")->load();
-    const float outGain = juce::Decibels::decibelsToGain(outDb);
 
     const int leftIdx  = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("leftType")->load());
     const int rightIdx = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("rightType")->load());
@@ -254,9 +279,7 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 
     const int osMode = juce::jlimit(0, 2, (int) apvts.getRawParameterValue("oversampleMode")->load());
 
-    float mix = apvts.getRawParameterValue("mix")->load() / 100.0f;
-    mix = juce::jlimit(0.0f, 1.0f, mix);
-
+    // --- Process saturation (optionally oversampled) on first 1–2 channels
     auto fullBlock = juce::dsp::AudioBlock<float>(buffer);
     auto block     = fullBlock.getSubsetChannelBlock(0, (size_t) procCh);
 
@@ -277,17 +300,29 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         processSaturationBlock(block, drive, morph, leftType, rightType);
     }
 
-    // DC-block + Output gain (в обычной частоте)
+    // --- DC-block + mix + output
     for (int ch = 0; ch < procCh; ++ch)
     {
         auto* wet = buffer.getWritePointer(ch);
-        const auto* dry = dryBuffer.getReadPointer(ch);
 
-        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        if (isWet)
         {
-            float w = dcBlock[(size_t) ch].processSample(wet[i]);
-            float y = dry[i] + mix * (w - dry[i]);
-            wet[i] = y * outGain; 
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                float w = dcBlock[(size_t) ch].processSample(wet[i]);
+                wet[i] = w * outGain;
+            }
+        }
+        else
+        {
+            const auto* dry = dryBuffer.getReadPointer(ch);
+
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                float w = dcBlock[(size_t) ch].processSample(wet[i]);
+                float y = dry[i] + mix * (w - dry[i]);
+                wet[i] = y * outGain;
+            }
         }
     }
 }
