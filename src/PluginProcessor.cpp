@@ -167,6 +167,15 @@ SatuMorpherAudioProcessor::SatuMorpherAudioProcessor()
                  .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 , apvts(*this, nullptr, "PARAMS", createParameterLayout())
 {
+    pDrive          = apvts.getRawParameterValue("drive");
+    pMorph          = apvts.getRawParameterValue("morph");
+    pMix            = apvts.getRawParameterValue("mix");
+    pOutput         = apvts.getRawParameterValue("output");
+    pLeftType       = apvts.getRawParameterValue("leftType");
+    pRightType      = apvts.getRawParameterValue("rightType");
+    pOversampleMode = apvts.getRawParameterValue("oversampleMode");
+
+    jassert(pDrive && pMorph && pMix && pOutput && pLeftType && pRightType && pOversampleMode);
 }
 
 void SatuMorpherAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -235,10 +244,10 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         return;
 
     // --- Params needed early
-    const float outDb   = apvts.getRawParameterValue("output")->load();
+    const float outDb   = pOutput->load();
     const float outGain = juce::Decibels::decibelsToGain(outDb);
 
-    float mix = apvts.getRawParameterValue("mix")->load() / 100.0f;
+    float mix = pMix->load() / 100.0f;
     mix = juce::jlimit(0.0f, 1.0f, mix);
 
     const bool isDry = (mix <= 0.0001f);
@@ -265,20 +274,19 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     }
 
     // --- Rest params
-    const float driveDb = apvts.getRawParameterValue("drive")->load();
+    const float driveDb = pDrive->load();
     const float drive   = juce::Decibels::decibelsToGain(driveDb);
 
-    float morph = apvts.getRawParameterValue("morph")->load();
+    float morph = pMorph->load();
     morph = juce::jlimit(0.0f, 1.0f, morph);
 
-    const int leftIdx  = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("leftType")->load());
-    const int rightIdx = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("rightType")->load());
+    const int leftIdx  = juce::jlimit(0, 6, (int) pLeftType->load());
+    const int rightIdx = juce::jlimit(0, 6, (int) pRightType->load());
 
     const auto leftType  = (SatType) leftIdx;
     const auto rightType = (SatType) rightIdx;
 
-    const int osMode = juce::jlimit(0, 2, (int) apvts.getRawParameterValue("oversampleMode")->load());
-
+    const int osMode = juce::jlimit(0, 2, (int) pOversampleMode->load());
     // --- Process saturation (optionally oversampled) on first 1–2 channels
     auto fullBlock = juce::dsp::AudioBlock<float>(buffer);
     auto block     = fullBlock.getSubsetChannelBlock(0, (size_t) procCh);

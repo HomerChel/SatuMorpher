@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <memory>
+#include <atomic>
 
 class SatuMorpherAudioProcessor : public juce::AudioProcessor
 {
@@ -49,4 +50,13 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
     juce::AudioBuffer<float> dryBuffer;
+
+    std::atomic<float>* pDrive = nullptr;
+    std::atomic<float>* pMorph = nullptr;
+    std::atomic<float>* pMix = nullptr;
+    std::atomic<float>* pOutput = nullptr;
+
+    std::atomic<float>* pLeftType = nullptr;
+    std::atomic<float>* pRightType = nullptr;
+    std::atomic<float>* pOversampleMode = nullptr;
 };
