@@ -90,11 +90,19 @@ SatuMorpherAudioProcessorEditor::SatuMorpherAudioProcessorEditor (SatuMorpherAud
         rightParamObj->setValueNotifyingHost(norm);
     });
 
-    oversampleButton.setButtonText("2x oversample");
-    addAndMakeVisible(oversampleButton);
-    oversampleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        audioProcessor.apvts, "oversample", oversampleButton
-    );
+    oversampleLabel.setText("OS", juce::dontSendNotification);
+    oversampleLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(oversampleLabel);
+
+    oversampleBox.addItem("Off", 1);
+    oversampleBox.addItem("x2", 2);
+    oversampleBox.addItem("x4", 3);
+    addAndMakeVisible(oversampleBox);
+
+    oversampleAttachment =
+        std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+            audioProcessor.apvts, "oversampleMode", oversampleBox
+        );
 
     startTimerHz(30);
 }
@@ -176,7 +184,9 @@ void SatuMorpherAudioProcessorEditor::resized()
     outputLabel.setBounds(botRight.removeFromTop(22));
     outputSlider.setBounds(botRight.reduced(10, 6));
 
-    oversampleButton.setBounds(16, getHeight() - 28, 80, 20);
+    const int pad = 16;
+    oversampleLabel.setBounds(pad, getHeight() - 28, 24, 20);
+    oversampleBox.setBounds(pad + 26, getHeight() - 30, 70, 24);
 }
 
 void SatuMorpherAudioProcessorEditor::timerCallback()

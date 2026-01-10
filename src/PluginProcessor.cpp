@@ -143,10 +143,11 @@ SatuMorpherAudioProcessor::createParameterLayout()
         "dB"
     ));
 
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"oversample", 1},
-        "Oversampling 2x",
-        false
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"oversampleMode", 1},
+        "Oversampling",
+        juce::StringArray{"Off", "x2", "x4"},
+        0
     ));
 
     return { params.begin(), params.end() };
@@ -167,12 +168,20 @@ void SatuMorpherAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
         f.coefficients = coeff;
 
     oversampling2x = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t) getTotalNumInputChannels(),
+        2,
         1, // 2^1 = 2x
         juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR
     );
     oversampling2x->reset();
     oversampling2x->initProcessing((size_t) samplesPerBlock);
+
+    oversampling4x = std::make_unique<juce::dsp::Oversampling<float>>(
+        2,
+        2, // 2^2 = 4x
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR
+    );
+    oversampling4x->reset();
+    oversampling4x->initProcessing((size_t) samplesPerBlock);
 }
 void SatuMorpherAudioProcessor::releaseResources() {}
 
@@ -210,6 +219,11 @@ static void processSaturationBlock(
 
 void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
+    const int totalCh = buffer.getNumChannels();
+    const int procCh  = juce::jmin(2, totalCh);
+    if (procCh <= 0)
+        return;
+
     juce::ScopedNoDenormals noDenormals;
 
     const float driveDb = apvts.getRawParameterValue("drive")->load();
@@ -221,35 +235,36 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     const float outDb   = apvts.getRawParameterValue("output")->load();
     const float outGain = juce::Decibels::decibelsToGain(outDb);
 
-    const bool osOn = apvts.getRawParameterValue("oversample")->load() > 0.5f;
-
     const int leftIdx  = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("leftType")->load());
     const int rightIdx = juce::jlimit(0, 6, (int) apvts.getRawParameterValue("rightType")->load());
 
     const auto leftType  = (SatType) leftIdx;
     const auto rightType = (SatType) rightIdx;
 
-    if (osOn && oversampling2x)
+    const int osMode = juce::jlimit(0, 2, (int) apvts.getRawParameterValue("oversampleMode")->load());
+
+    auto fullBlock = juce::dsp::AudioBlock<float>(buffer);
+    auto block     = fullBlock.getSubsetChannelBlock(0, (size_t) procCh);
+
+    if (osMode == 1 && oversampling2x)
     {
-        juce::dsp::AudioBlock<float> block(buffer);
-
-        // upsample -> получаем новый AudioBlock на внутреннем буфере oversampler-а
         auto osBlock = oversampling2x->processSamplesUp(block);
-
-        // saturation на оверсэмплинге
         processSaturationBlock(osBlock, drive, morph, leftType, rightType);
-
-        // обратно вниз в исходный buffer
         oversampling2x->processSamplesDown(block);
+    }
+    else if (osMode == 2 && oversampling4x)
+    {
+        auto osBlock = oversampling4x->processSamplesUp(block);
+        processSaturationBlock(osBlock, drive, morph, leftType, rightType);
+        oversampling4x->processSamplesDown(block);
     }
     else
     {
-        juce::dsp::AudioBlock<float> block(buffer);
         processSaturationBlock(block, drive, morph, leftType, rightType);
     }
 
     // DC-block + Output gain (в обычной частоте)
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    for (int ch = 0; ch < procCh; ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
         for (int i = 0; i < buffer.getNumSamples(); ++i)
