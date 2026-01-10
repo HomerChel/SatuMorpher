@@ -291,22 +291,72 @@ void SatuMorpherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto fullBlock = juce::dsp::AudioBlock<float>(buffer);
     auto block     = fullBlock.getSubsetChannelBlock(0, (size_t) procCh);
 
-    if (osMode == 1 && oversampling2x)
+
+
+
+
+    const bool osOn     = (osMode != 0);
+    const bool needMix  = !isWet; // isDry уже обработан ранним return выше
+
+    if (osOn)
     {
-        auto osBlock = oversampling2x->processSamplesUp(block);
-        processSaturationBlock(osBlock, drive, morph, leftType, rightType);
-        oversampling2x->processSamplesDown(block);
+        auto* os = (osMode == 1 ? oversampling2x.get() : oversampling4x.get());
+
+        if (os != nullptr)
+        {
+            auto osBlock = os->processSamplesUp(block);
+
+            // 1) Сохраняем dry в OS-домене (до сатурации)
+            if (needMix)
+            {
+                const int osSamples = (int) osBlock.getNumSamples();
+                osDryBuffer.setSize(procCh, osSamples, false, false, true);
+
+                for (int ch = 0; ch < procCh; ++ch)
+                {
+                    auto* dst = osDryBuffer.getWritePointer(ch);
+                    auto* src = osBlock.getChannelPointer((size_t) ch);
+                    std::memcpy(dst, src, (size_t) osSamples * sizeof(float));
+                }
+            }
+
+            // 2) Сатурация в OS-домене
+            processSaturationBlock(osBlock, drive, morph, leftType, rightType);
+
+            // 3) Mix в OS-домене: osBlock = dryOS + mix*(wetOS - dryOS)
+            if (needMix)
+            {
+                const int osSamples = (int) osBlock.getNumSamples();
+
+                for (int ch = 0; ch < procCh; ++ch)
+                {
+                    auto* wetOS = osBlock.getChannelPointer((size_t) ch);
+                    auto* dryOS = osDryBuffer.getReadPointer(ch);
+
+                    for (int i = 0; i < osSamples; ++i)
+                        wetOS[i] = dryOS[i] + mix * (wetOS[i] - dryOS[i]);
+                }
+            }
+
+            // 4) Downsample уже смешанного сигнала
+            os->processSamplesDown(block);
+
+            // 5) DC-block + Output gain (в обычной частоте), без доп. mix
+            for (int ch = 0; ch < procCh; ++ch)
+            {
+                auto* data = buffer.getWritePointer(ch);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    float y = dcBlock[(size_t) ch].processSample(data[i]);
+                    data[i] = y * outGain;
+                }
+            }
+
+            return; // важно: чтобы не попасть в старый base-rate mix ниже
+        }
     }
-    else if (osMode == 2 && oversampling4x)
-    {
-        auto osBlock = oversampling4x->processSamplesUp(block);
-        processSaturationBlock(osBlock, drive, morph, leftType, rightType);
-        oversampling4x->processSamplesDown(block);
-    }
-    else
-    {
-        processSaturationBlock(block, drive, morph, leftType, rightType);
-    }
+
+    processSaturationBlock(block, drive, morph, leftType, rightType);
 
     // --- DC-block + mix + output
     for (int ch = 0; ch < procCh; ++ch)

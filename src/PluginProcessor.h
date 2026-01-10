@@ -50,6 +50,7 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
     juce::AudioBuffer<float> dryBuffer;
+    juce::AudioBuffer<float> osDryBuffer;
 
     std::atomic<float>* pDrive = nullptr;
     std::atomic<float>* pMorph = nullptr;
