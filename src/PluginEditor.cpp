@@ -205,6 +205,14 @@ void SatuMorpherAudioProcessorEditor::resized()
 
     outputLabel.setBounds(outArea.removeFromTop(22));
     outputSlider.setBounds(outArea.reduced(10, 6));
+
+    // Oversampling selector (bottom-left)
+    const int pad = 16;
+    const int h   = 24;
+    const int y   = getHeight() - pad - h;
+
+    oversampleLabel.setBounds(pad, y, 24, h);
+    oversampleBox.setBounds(pad + 30, y, 80, h);
 }
 
 void SatuMorpherAudioProcessorEditor::timerCallback()
