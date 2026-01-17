@@ -1,5 +1,54 @@
 #include "PluginEditor.h"
 
+namespace
+{
+    class AboutComponent : public juce::Component
+    {
+    public:
+        AboutComponent()
+            : site ("sintezafx.com", juce::URL ("https://sintezafx.com"))
+            , email ("alex@sintezafx.com", juce::URL ("mailto:alex@sintezafx.com"))
+        {
+            line1.setText ("Created out of boredom and interest", juce::dontSendNotification);
+            line1.setJustificationType (juce::Justification::centred);
+            addAndMakeVisible (line1);
+
+            line2.setText ("Send your tracks made with my plugin to", juce::dontSendNotification);
+            line2.setJustificationType (juce::Justification::centred);
+            addAndMakeVisible (line2);
+
+            addAndMakeVisible (email);
+
+            line3.setText ("and I'll feature them on the plugin page", juce::dontSendNotification);
+            line3.setJustificationType (juce::Justification::centred);
+            addAndMakeVisible (line3);
+
+            addAndMakeVisible (site);
+        }
+
+        void resized() override
+        {
+            auto r = getLocalBounds().reduced (14);
+
+            site.setBounds (r.removeFromTop (22));
+            r.removeFromTop (10);
+
+            line1.setBounds (r.removeFromTop (20));
+            r.removeFromTop (10);
+
+            line2.setBounds (r.removeFromTop (20));
+            email.setBounds (r.removeFromTop (22));
+            line3.setBounds (r.removeFromTop (20));
+        }
+
+    private:
+        juce::Label line1, line2, line3;
+        juce::HyperlinkButton site;
+        juce::HyperlinkButton email;
+    };
+} // namespace
+
+
 SatuMorpherAudioProcessorEditor::SatuMorpherAudioProcessorEditor (SatuMorpherAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
@@ -8,6 +57,16 @@ SatuMorpherAudioProcessorEditor::SatuMorpherAudioProcessorEditor (SatuMorpherAud
     woodImage = juce::ImageCache::getFromMemory(BinaryData::wood_png, BinaryData::wood_pngSize);
     logoImage = juce::ImageCache::getFromMemory(BinaryData::logo_png, BinaryData::logo_pngSize);
 
+    logoButton.setImages (false, true, true,
+                          logoImage, 1.0f, juce::Colours::transparentBlack,
+                          logoImage, 1.0f, juce::Colours::transparentBlack,
+                          logoImage, 1.0f, juce::Colours::transparentBlack);
+
+    logoButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    logoButton.setTooltip ("About");
+    logoButton.onClick = [this] { showAbout(); };
+
+    addAndMakeVisible (logoButton);
 
     driveSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     driveSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 24);
@@ -133,24 +192,6 @@ void SatuMorpherAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour(juce::Colours::black.withAlpha(0.55f));
     g.fillRect(getLocalBounds());
 
-    if (logoImage.isValid())
-    {
-        const int pad = 10;
-
-        const int logoW = 130;
-        const int logoH = (int) std::round(logoW * ((double) logoImage.getHeight() / (double) logoImage.getWidth()));
-
-        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-
-        const int x = getWidth()  - pad - logoW;
-        const int y = getHeight() - pad - logoH;
-
-        g.setOpacity(0.9f);
-        g.drawImageWithin(logoImage, x, y, logoW, logoH,
-                        juce::RectanglePlacement::fillDestination);
-        g.setOpacity(1.0f);
-    }
-
     g.setColour (juce::Colours::white);
     g.setFont (20.0f);
     g.drawFittedText ("SatuMorpher", getLocalBounds().removeFromTop(28), juce::Justification::centred, 1);
@@ -213,6 +254,15 @@ void SatuMorpherAudioProcessorEditor::resized()
 
     oversampleLabel.setBounds(pad, y, 24, h);
     oversampleBox.setBounds(pad + 30, y, 80, h);
+
+    const int logoPad = 10;
+    const int logoH = 33;
+    const int logoW = 120;
+
+    logoButton.setBounds (getWidth() - logoPad - logoW,
+                        getHeight() - logoPad - logoH,
+                        logoW, logoH);
+
 }
 
 void SatuMorpherAudioProcessorEditor::timerCallback()
@@ -224,3 +274,12 @@ void SatuMorpherAudioProcessorEditor::timerCallback()
         rightLamp.setSelectedIndex((int)rightTypeParam->load());
 }
 
+void SatuMorpherAudioProcessorEditor::showAbout()
+{
+    auto content = std::make_unique<AboutComponent>();
+    content->setSize (420, 160);
+
+    juce::CallOutBox::launchAsynchronously (std::move (content),
+                                           logoButton.getScreenBounds(),
+                                           nullptr);
+}

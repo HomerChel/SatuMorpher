@@ -52,5 +52,8 @@ private:
     juce::Label oversampleLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> oversampleAttachment;
 
+    juce::ImageButton logoButton;
+    void showAbout();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SatuMorpherAudioProcessorEditor)
 };
