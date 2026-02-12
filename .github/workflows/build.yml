@@ -1,0 +1,149 @@
+name: Build VST3 (Linux/Windows/macOS) + checksums
+
+on:
+  push:
+    branches: ["main", "master"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libfreetype6-dev \
+            libfontconfig1-dev \
+            libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxcomposite-dev libxdamage-dev libxrender-dev
+
+      - name: Prepare local VST3 dir (if your CMake copies there)
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.vst3"
+
+      - name: Configure (Release)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Release)
+        run: cmake --build build --config Release
+
+      - name: Package .vst3 + SHA256
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, sys, glob, hashlib, pathlib, subprocess
+
+          root = pathlib.Path(".").resolve()
+          build = root / "build"
+          dist = root / "dist"
+          dist.mkdir(exist_ok=True)
+
+          # Find VST3 bundles produced by JUCE CMake
+          vst3_dirs = []
+          for p in build.rglob("*.vst3"):
+            if p.is_dir():
+              vst3_dirs.append(p)
+          if not vst3_dirs:
+            print("ERROR: No .vst3 directory found under build/")
+            sys.exit(1)
+
+          runner_os = os.environ.get("RUNNER_OS", "unknown").lower()
+          os_tag = {"linux":"linux", "windows":"windows", "macos":"macos"}.get(runner_os, runner_os)
+
+          ref_name = os.environ.get("GITHUB_REF_NAME") or os.environ.get("GITHUB_SHA","").strip()
+          if not ref_name:
+            ref_name = "dev"
+          # short sha if not a tag
+          if not ref_name.startswith("v"):
+            sha = os.environ.get("GITHUB_SHA","")[:7]
+            ref_name = sha or ref_name
+
+          arch = os.environ.get("RUNNER_ARCH", "x64").lower()
+          arch = {"x64":"x86_64", "arm64":"arm64"}.get(arch, arch)
+
+          # Helper: zip via cmake -E tar (portable)
+          def zip_dir(src_dir: pathlib.Path, out_zip: pathlib.Path):
+            out_zip.parent.mkdir(parents=True, exist_ok=True)
+            # cmake -E tar cf <zip> --format=zip <dir>
+            subprocess.check_call(["cmake", "-E", "tar", "cf", str(out_zip), "--format=zip", str(src_dir.name)],
+                                  cwd=str(src_dir.parent))
+
+          def sha256_file(path: pathlib.Path) -> str:
+            h = hashlib.sha256()
+            with path.open("rb") as f:
+              for chunk in iter(lambda: f.read(1024*1024), b""):
+                h.update(chunk)
+            return h.hexdigest()
+
+          checksums_lines = []
+
+          for vst3 in vst3_dirs:
+            plugin_name = vst3.stem
+            zip_name = f"{plugin_name}-{ref_name}-{os_tag}-{arch}.vst3.zip"
+            out_zip = dist / zip_name
+
+            zip_dir(vst3, out_zip)
+            digest = sha256_file(out_zip)
+
+            sha_path = out_zip.with_suffix(out_zip.suffix + ".sha256")
+            sha_path.write_text(f"{digest}  {out_zip.name}\n", encoding="utf-8")
+
+            checksums_lines.append(f"{digest}  {out_zip.name}")
+
+            print(f"Packed: {out_zip} ({out_zip.stat().st_size/1024/1024:.1f} MB)")
+            print(f"SHA256: {digest}")
+
+          (dist / f"checksums-{os_tag}.txt").write_text("\n".join(checksums_lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vst3-${{ runner.os }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release (tags v*)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist_all
+
+      - name: Prepare combined checksums
+        run: |
+          mkdir -p release_dist
+          find dist_all -type f -name "*.zip" -o -name "*.sha256" -o -name "checksums-*.txt" | while read -r f; do
+            cp -f "$f" release_dist/
+          done
+          cat release_dist/checksums-*.txt > release_dist/checksums.txt || true
+          ls -la release_dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_dist/*
